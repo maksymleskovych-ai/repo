@@ -1,0 +1,170 @@
+# Companies the collector must never pass on. One per line. Add more any time.
+Cezanne HR
+Pimberly
+easybill
+Carerix
+Officient
+Homerun
+softgarden
+absence.io
+Recruitee
+Sympa
+Javelo
+kiwiHR
+Tellent
+ReachMee
+Emply
+Grade
+Ontame
+Weekli
+Talentech
+Nmbrs
+Loket
+Raet
+Visma People
+Planday
+Breathe HR
+onlyfy
+InRecruiting
+TalentSoft
+DigitalRecruiters
+Skello
+Sesame HR
+Marosa
+Cevinio
+Digiteal
+Crediflow
+faktoora
+HubBroker
+Apix Messaging
+codefortynine
+beyonnex.io
+Peec AI
+Clera
+Jiga
+Hook
+Escape Technologies
+Seven Red Lines
+xpate
+Blackfluo.ai
+Mondo
+B2Spin
+Voucherify
+Talon.One
+Storyblok
+inriver
+OneStock
+Patchworks
+Contents
+Limetax
+Axonaut
+Getint
+Nango
+Deepslate
+Mochi
+SiPhox
+Kittl
+Avelios
+Lifen
+Xealth
+Langfuse
+tamigo
+Abacus Insights
+DexCare
+Oshi Health
+PraxisEins
+Cloudprinter
+Ingrid
+Digitail
+Verda
+Mithril
+Flatpay
+Maximus
+Hoxhunt
+Commit
+Creatio
+MWDN
+Software Mind
+Apriorit
+Miratech
+Sync.MD
+Sprinter Health
+Ellipsis Health
+Fasten Health
+Medefy Health
+# CMS giants / payers / EHR vendors (skip per routine rules)
+Luma Health
+Artera
+Wheel
+Infinitus
+Cadence
+Zocdoc
+# Staffing, outsourcing and job-marketplace brands that appear on job boards
+Toptal
+Turing
+Crossover
+Andela
+BairesDev
+EPAM
+EPAM Systems
+Lemon.io
+Proxify
+Jobgether
+Braintrust
+Mercor
+DataAnnotation
+Outlier
+G2i
+X-Team
+Arc
+Gun.io
+Remote
+Deel
+Oyster
+Revelo
+Terminal
+Hire Remote
+Scale AI
+Alignerr
+Invisible Technologies
+Micro1
+Lemon
+Globant
+Endava
+SoftServe
+N-iX
+Intellias
+Ciklum
+DataArt
+Luxoft
+Sigma Software
+Grid Dynamics
+ELEKS
+Netguru
+10Clouds
+STX Next
+The Software House
+Boldare
+Miquido
+Vention
+Itransition
+ScienceSoft
+Andersen
+Innowise
+Nearsure
+Jobot
+Robert Half
+Randstad
+Hays
+Experis
+Insight Global
+TEKsystems
+Kforce
+Cognizant
+Infosys
+Wipro
+Accenture
+Capgemini
+Deloitte
+Tata Consultancy Services
+HCLTech

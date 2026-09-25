@@ -1,0 +1,49 @@
+name: Collect lead candidates
+
+on:
+  schedule:
+    # 02:17 UTC = 05:17 Kyiv (summer), about two hours before the Claude routine.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      top:
+        description: "How many candidates to pass on"
+        default: "30"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect-leads
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Test
+        working-directory: leadgen
+        run: python -m unittest test_collect
+
+      - name: Collect
+        working-directory: leadgen
+        run: python collect.py --top "${{ inputs.top || '30' }}"
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add output leadgen/data/seen.csv
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+          else
+            git commit -m "Lead candidates $(date -u +%F)"
+            git push
+          fi
