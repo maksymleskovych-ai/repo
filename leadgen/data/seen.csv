@@ -1,1 +1,66 @@
 key,company,status,reason,date
+pivotalhealth,Pivotal Health,passed,,2026-09-26
+auviknetworks,Auvik Networks Inc,passed,,2026-09-26
+stickermule,Sticker Mule,passed,,2026-09-26
+evolve,Evolve,passed,,2026-09-26
+hightouch,Hightouch,passed,,2026-09-26
+aweber,AWeber,passed,,2026-09-26
+recaredeutschland,Recare Deutschland GmbH,passed,,2026-09-26
+kobotoolbox,KoboToolbox,passed,,2026-09-26
+brightvisiontechnologies,Bright Vision Technologies,passed,,2026-09-26
+bitso,Bitso,passed,,2026-09-26
+bird,Bird,passed,,2026-09-26
+sanctuarycomputer,Sanctuary Computer Inc,passed,,2026-09-26
+ateam,A.Team,passed,,2026-09-26
+bjak,Bjak,passed,,2026-09-26
+salescaptain,SalesCaptain,passed,,2026-09-26
+genpact,Genpact,passed,,2026-09-26
+pledgesunderreview,Pledges Under Review,passed,,2026-09-26
+additionalusecase,Additional Use Case,passed,,2026-09-26
+pharmaciespharmacysystems,Pharmacies & Pharmacy Systems,passed,,2026-09-26
+submityourapp,Submit your app,passed,,2026-09-26
+friendoftheecosystem,Friend of the Ecosystem,passed,,2026-09-26
+patientfacingapps,Patient Facing Apps,passed,,2026-09-26
+providersandtheirdelegatedtechnology,Providers and Their Delegated Technology,passed,,2026-09-26
+government,Government,passed,,2026-09-26
+patientscaregivers,Patients/Caregivers,passed,,2026-09-26
+companypledge,COMPANY PLEDGE,passed,,2026-09-26
+electronichealthrecordsehrs,Electronic Health Records (EHRs),passed,,2026-09-26
+payersandtheirdelegatedtechnology,Payers and Their Delegated Technology,passed,,2026-09-26
+healthtechecosystemcategories,Health Tech Ecosystem Categories,passed,,2026-09-26
+pledgedemoshowcase,Pledge Demo Showcase,passed,,2026-09-26
+overview,Overview,killed,G3: eng roles in Bengaluru,2026-09-26
+amsterdambasedduqu,Amsterdam-based Duqu,killed,no ATS and weak signal,2026-09-26
+italysclastix,Italy’s Clastix,killed,no ATS and weak signal,2026-09-26
+reykjavkbased50skills,Reykjavík-based 50skills,killed,no ATS and weak signal,2026-09-26
+colognebasedmetycle,Cologne-based Metycle,killed,no ATS and weak signal,2026-09-26
+stockholmsspiich,Stockholm’s Spiich,killed,no ATS and weak signal,2026-09-26
+berlinbasedmika,Berlin-based mika,killed,no ATS and weak signal,2026-09-26
+besanonbasedlightspring,Besançon-based Lightspring,killed,no ATS and weak signal,2026-09-26
+parisbasedprimo,Paris-based Primo,killed,no ATS and weak signal,2026-09-26
+tekever,TEKEVER,killed,no ATS and weak signal,2026-09-26
+owowventurestudio,OWOW Venture Studio,killed,no ATS and weak signal,2026-09-26
+kontext,Kontext,killed,no ATS and weak signal,2026-09-26
+aiplatformreplynext,AI platform Reply Next,killed,no ATS and weak signal,2026-09-26
+cruxanalytics,Crux Analytics,killed,no ATS and weak signal,2026-09-26
+duqu,Duqu,killed,no ATS and weak signal,2026-09-26
+clastix,Clastix,killed,no ATS and weak signal,2026-09-26
+dtcp,DTCP,killed,no ATS and weak signal,2026-09-26
+50skills,50skills,killed,no ATS and weak signal,2026-09-26
+londontraveltechstasher,London traveltech Stasher,killed,no ATS and weak signal,2026-09-26
+mitremedia,Mitre Media,killed,G1: stack Ruby,2026-09-26
+uniodigital,Unio Digital,killed,G0: staffing/outsourcing wording,2026-09-26
+okwhen,OkWhen,killed,G1: stack .NET/C#/Angular,2026-09-26
+krugernearshorellcrekluti,Kruger NearShore LLC - Rekluti,killed,G0: staffing/outsourcing wording,2026-09-26
+delinea,Delinea,killed,"G5: too big (90 open roles, 36 eng)",2026-09-26
+stone,Stone,killed,"G5: too big (402 open roles, 15 eng)",2026-09-26
+parser,Parser,killed,G1: stack Java,2026-09-26
+zact,Zact,killed,G1: stack Java,2026-09-26
+dropbox,Dropbox,killed,G3: eng roles in Poland,2026-09-26
+innerai,Inner AI,killed,G1: stack Ruby,2026-09-26
+supportninja,SupportNinja,killed,G1: stack .NET/C#,2026-09-26
+seamlessassist,Seamless Assist,killed,G3: eng roles in India,2026-09-26
+alphasense,AlphaSense,killed,"G3: eng roles in Bengaluru, Delhi, India",2026-09-26
+current,Current,killed,G1: stack .NET/C#/Angular/PHP,2026-09-26
+natuvion,Natuvion GmbH,killed,language: local language required,2026-09-26
+n2jsoft,N2JSoft,killed,G1: stack .NET/C#/Angular,2026-09-26
