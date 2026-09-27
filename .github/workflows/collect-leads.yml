@@ -9,6 +9,10 @@ on:
       top:
         description: "How many candidates to pass on"
         default: "30"
+      dry_run:
+        description: "Test only: print results, commit nothing"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -34,9 +38,14 @@ jobs:
 
       - name: Collect
         working-directory: leadgen
-        run: python collect.py --top "${{ inputs.top || '30' }}"
+        run: python collect.py --top "${{ inputs.top || '30' }}" ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: Show results (test run)
+        if: ${{ inputs.dry_run }}
+        run: cat output/latest.csv
 
       - name: Commit results
+        if: ${{ !inputs.dry_run }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
