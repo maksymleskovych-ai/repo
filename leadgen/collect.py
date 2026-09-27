@@ -128,7 +128,7 @@ STAFFING_HINT = re.compile(
     re.I,
 )
 STAFFING_NAME = re.compile(
-    r"consult|staffing|recruit|talent|outsourc|nearshore|offshore|infotech|infosys|"
+    r"consult|staffing|recruit|talent|careers|outsourc|nearshore|offshore|infotech|infosys|"
     r"it solutions|software solutions|technologies (inc|llc|pvt)|\bpvt\b|services (inc|llc|ltd)",
     re.I,
 )
@@ -188,7 +188,7 @@ PUBLIC_NAME = re.compile(r"\bplc\b", re.I)
 NON_TARGET_NAME = re.compile(r"universit|college|school|foundation|government|county|city of|ministry|hospital|\bbank\b", re.I)
 AGENCY_ABOUT = re.compile(
     r"\b(agency|consultancy|consulting (firm|company)|transformation firm|dev(elopment)? shop|software house|"
-    r"for our clients|our clients'|on-demand teams|staff augmentation|nearshore|outsourc)",
+    r"for our clients|our clients'|on-demand teams|staff augmentation|nearshore|outsourc|consultant network)",
     re.I,
 )
 GOV_ABOUT = re.compile(
@@ -201,7 +201,8 @@ HEADCOUNT = re.compile(r"(\d[\d,.]*)\s*(k)?\+?\s*(employees|people|staff|team me
 INFRA_ABOUT = re.compile(
     r"open.source [\w-]+ (framework|sdk|library|runtime)|framework for building|\bsdk\b|\bruntime\b|"
     r"\bbpf\b|linux (kernel|internals)|(give|help|for) developers|security teams|attack surface|"
-    r"infrastructure for|(uptime|application|infrastructure|synthetic|api) monitoring|observability|\bdevops\b",
+    r"infrastructure for|(uptime|application|infrastructure|synthetic|api) monitoring|observability|\bdevops\b|"
+    r"developer.first|infrastructure.as.code|infrastructure orchestrat|data replication|\bcdc\b|making the tools",
     re.I,
 )
 
@@ -798,6 +799,10 @@ def ats_smartrecruiters(slug: str):
     return f"https://jobs.smartrecruiters.com/{slug}", jobs
 
 
+# Career pages hosted by a vendor: the domain says nothing about the company's own slug.
+HOSTED_CAREER_SITES = {"bamboohr", "greenhouse", "lever", "ashbyhq", "workable", "recruitee", "personio",
+                       "smartrecruiters", "notion", "github", "google", "ycombinator", "wellfound", "breezy", "teamtailor"}
+
 ATS_PROBES = (ats_ashby, ats_greenhouse, ats_lever, ats_recruitee, ats_personio, ats_workable, ats_smartrecruiters)
 
 
@@ -805,7 +810,7 @@ def enrich(c: Candidate) -> Candidate:
     names = slugs(c.name)
     if c.website:
         parts = urllib.parse.urlparse(c.website).netloc.lower().split(".")
-        if len(parts) >= 2:
+        if len(parts) >= 2 and parts[-2] not in HOSTED_CAREER_SITES:
             names += [s for s in slugs(parts[-2]) if s not in names]
     for slug in names:
         for probe in ATS_PROBES:

@@ -223,6 +223,28 @@ class LiveDataRegressionTest(unittest.TestCase):
         ]:
             self.assertEqual(self.about(name, about).kill, "product is infrastructure/devtools/security", name)
 
+    def test_more_devtools_wording(self):
+        for name, about in [
+            ("Spacelift", "building an infrastructure orchestrator and collaborative management platform for Infrastructure-as-Code"),
+            ("Estuary", "Estuary is a post-Series A startup powering right-time data replication. We're open-source, developer-first."),
+        ]:
+            self.assertEqual(self.about(name, about).kill, "product is infrastructure/devtools/security", name)
+
+    def test_consultant_network_and_recruiter_names(self):
+        self.assertTrue(self.about("IWConnect", "We are expanding our B2B consultant network with AI engineers.").kill.startswith("G0"))
+        self.assertTrue(self.about("thehivecareers.co", "").kill.startswith("G0"))
+
+    def test_hosted_career_site_is_not_a_slug(self):
+        x = c.Candidate(name="Zepto", website="https://zepto.bamboohr.com")
+        tried = []
+        orig = c.ATS_PROBES
+        c.ATS_PROBES = (lambda slug: tried.append(slug),)
+        try:
+            c.enrich(x)
+        finally:
+            c.ATS_PROBES = orig
+        self.assertNotIn("bamboohr", tried)
+
     def test_agency_government_and_size(self):
         self.assertTrue(self.about("Prophet Town", "We are a people-first, boutique tech agency creating on-demand teams "
                                    "for long-standing clients.").kill.startswith("G0"))

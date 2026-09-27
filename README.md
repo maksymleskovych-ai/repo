@@ -15,7 +15,7 @@ A daily script that does the cheap part of lead generation, so the Claude routin
 **Everyday tweaks**
 
 - Never want to see a company again: add a line to `leadgen/data/kill_list.txt`.
-- Run it now: Actions → "Collect lead candidates" → Run workflow.
+- Run it now: Actions → "Collect lead candidates" → Run workflow. Tick "dry run" to only print the results without committing or using up candidates.
 - Change the count: the `top` input, or `--top` in the workflow.
 
 Tests: `cd leadgen && python -m unittest test_collect`.
