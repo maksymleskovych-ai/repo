@@ -55,6 +55,17 @@ class GateTest(unittest.TestCase):
         self.assertGreaterEqual(x.score, 5)
         self.assertEqual(x.facts["oldest_days"], 90)
 
+    def test_europe_scores_higher(self):
+        eu, us = cand(jobs=[job(loc="Remote, Europe")]), cand(jobs=[job(loc="Remote, US")])
+        for x in (eu, us):
+            c.evaluate(x, set(), set())
+        self.assertEqual(eu.score - us.score, 2)
+
+    def test_too_many_eng_roles(self):
+        x = cand(jobs=[job() for _ in range(13)])
+        c.evaluate(x, set(), set())
+        self.assertTrue(x.kill.startswith("G5"))
+
     def test_bad_stack(self):
         x = cand(jobs=[job(text="Java, Spring Boot, Angular"), job(text="Java microservices")])
         c.evaluate(x, set(), set())

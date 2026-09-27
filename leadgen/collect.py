@@ -165,6 +165,13 @@ ACQUIRED_TITLE = re.compile(
     r"^(?P<co>[A-Z0-9][\w.&'’\- ]{1,40}?)\s+(?:is |has been |gets )?acquired by\b", re.I
 )
 
+EUROPE_HINT = re.compile(
+    r"europe|\bemea\b|\beu\b|\bcet\b|\buk\b|united kingdom|london|germany|berlin|munich|netherlands|"
+    r"amsterdam|france|paris|spain|madrid|barcelona|portugal|lisbon|ireland|dublin|sweden|stockholm|"
+    r"denmark|copenhagen|norway|oslo|finland|helsinki|belgium|brussels|austria|vienna|switzerland|zurich|"
+    r"italy|milan|estonia|tallinn|latvia|riga|lithuania|vilnius|worldwide|anywhere",
+    re.I,
+)
 LEGAL_SUFFIX = re.compile(
     r"[,.]?\s+(gmbh|ab|bv|b\.v\.|ltd|limited|inc|inc\.|sa|s\.a\.|nv|ag|llc|oy|as|aps|sas|srl|plc|co)\.?$",
     re.I,
@@ -674,8 +681,9 @@ ATS_PROBES = (ats_ashby, ats_greenhouse, ats_lever, ats_recruitee, ats_personio,
 def enrich(c: Candidate) -> Candidate:
     names = slugs(c.name)
     if c.website:
-        host = urllib.parse.urlparse(c.website).netloc.removeprefix("www.")
-        names += [s for s in slugs(host.split(".")[0]) if s not in names]
+        parts = urllib.parse.urlparse(c.website).netloc.lower().split(".")
+        if len(parts) >= 2:
+            names += [s for s in slugs(parts[-2]) if s not in names]
     for slug in names:
         for probe in ATS_PROBES:
             res = probe(slug)
@@ -732,7 +740,7 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
         c.kill = "language: local language required"
         return
 
-    if len(c.ats_jobs) > 60 or len(eng_jobs) > 25:
+    if len(c.ats_jobs) > 40 or len(eng_jobs) > 12:
         c.kill = f"G5: too big ({len(c.ats_jobs)} open roles, {len(eng_jobs)} eng)"
         return
 
@@ -763,6 +771,8 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     score += 3 if isinstance(f["oldest_days"], int) and f["oldest_days"] > 60 else 0
     score += 2 if c.ats_url else 0
     score += 1 if c.website else 0
+    where = " ".join(f.get("locations", [])) + " " + " ".join(s.text for s in c.signals)
+    score += 2 if c.region == "EU" or EUROPE_HINT.search(where) else 0
     score += 1 if 1 <= f["eng_open"] <= 10 else 0
     score += 2 if f["integration"] else 0
     score += 1 if f["ai"] else 0
