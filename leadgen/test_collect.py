@@ -190,6 +190,68 @@ class StageOneTest(unittest.TestCase):
         self.assertNotIn("named tech contact", row["to_verify"])
 
 
+class LiveDataRegressionTest(unittest.TestCase):
+    """Cases taken from the 2026-09-27 run."""
+
+    def about(self, name, about, text="Senior Backend Engineer. TypeScript, Node.js, integrations."):
+        x = cand(name=name, job_texts=[text])
+        x.about = about
+        c.evaluate(x, set(), set())
+        return x
+
+    def test_no_garbage_contact_names(self):
+        for t in ("or integrations, email us directly at jobs@x.io", "Please reach out directly: a@b.io",
+                  "contact us for innovative work", "message the team at hiring@x.io"):
+            self.assertEqual(c.find_contact(t)[0], "", t)
+        self.assertEqual(c.find_contact("Questions? Email our CTO Maria at maria@x.io"), ("Maria", "CTO"))
+
+    def test_no_invented_emails(self):
+        self.assertEqual(c.find_email("email me directly at vishnu.swaroop on LinkedIn"), "")
+        self.assertEqual(c.find_email("engineers at albert we build"), "")
+        self.assertEqual(c.find_email("talent+hn@cwai.co.Short teams ship"), "")
+        self.assertEqual(c.find_email("work@yeet.cx"), "work@yeet.cx")
+
+    def test_job_title_is_not_a_company(self):
+        self.assertTrue(c.is_eng("Senior Python Backend Engineer"))
+
+    def test_devtools_from_one_line(self):
+        for name, about in [
+            ("Mastra", "Mastra is the open-source TypeScript framework for building AI agents (agents, workflows, memory)."),
+            ("Checkly", "That instinct is Checkly's whole reason to exist. We give developers and their agents synthetic monitoring."),
+            ("yeet", "Building a dynamic runtime on top of the Linux BPF sub-system."),
+            ("CyberAtlas", "CyberAtlas maps the internet to help security teams discover their exposed digital infrastructure."),
+        ]:
+            self.assertEqual(self.about(name, about).kill, "product is infrastructure/devtools/security", name)
+
+    def test_agency_government_and_size(self):
+        self.assertTrue(self.about("Prophet Town", "We are a people-first, boutique tech agency creating on-demand teams "
+                                   "for long-standing clients.").kill.startswith("G0"))
+        self.assertTrue(self.about("GovStar", "GovStar builds AI supporting U.S. national security missions.")
+                        .kill.startswith("revenue from government"))
+        self.assertTrue(self.about("Republic Services", "the second largest environmental services company, ~40K employees")
+                        .kill.startswith("G5"))
+        self.assertTrue(self.about("Princeton University", "").kill.startswith("not a product company"))
+
+    def test_small_saas_survives(self):
+        x = self.about("Great Question", "Great Question is the best way to understand your customers. "
+                       "We're 2nd time founders, 35 people, closed our Series A last year.")
+        self.assertEqual(x.kill, "")
+        self.assertEqual(x.facts["people"], 35)
+
+    def test_patient_monitoring_is_not_devtools(self):
+        x = self.about("CareCo", "CareCo runs remote patient monitoring for 200 clinics.")
+        self.assertEqual(x.kill, "")
+        self.assertEqual(c.icp_hint(x), "1?")
+
+    def test_benefits_do_not_make_it_health(self):
+        x = self.about("Odin", "Odin builds workforce visibility software for construction.",
+                       "Senior Platform Engineer. TypeScript. Benefits: health insurance, dental care.")
+        self.assertNotEqual(c.icp_hint(x), "1?")
+
+    def test_instructor_is_not_engineering(self):
+        self.assertFalse(c.is_eng("Instructor, AI/Machine Learning (Part time)"))
+
+
 class RssTest(unittest.TestCase):
     def test_parse(self):
         xml = """<?xml version="1.0"?><rss><channel>

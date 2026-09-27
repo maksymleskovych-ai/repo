@@ -79,7 +79,7 @@ ENG_TITLE = re.compile(
 NON_ENG_TITLE = re.compile(
     r"estimator|architectural|civil|mechanical|electrical|structural|hardware|sales engineer|"
     r"solutions? (architect|engineer|consultant)|consultant|pre-?sales|support engineer|"
-    r"recruit|intern\b|designer|test (technician|operator)",
+    r"recruit|intern\b|designer|test (technician|operator)|instructor|teacher|trainer|tutor|peoplesoft|analyst",
     re.I,
 )
 
@@ -117,7 +117,7 @@ INTEGRATION_HINT = re.compile(
 AI_HINT = re.compile(r"\bllm\b|\brag\b|genai|generative ai|ai agents?|langchain", re.I)
 SECURITY_HINT = re.compile(r"soc ?2|iso ?27001|hipaa|nis2|\bcra\b|compliance", re.I)
 HEALTH_HINT = re.compile(
-    r"health|patient|clinic|care\b|medical|telehealth|telemed|pharma|therapy|hipaa", re.I
+    r"health ?care|digital health|patients?\b|clinic|medical|telehealth|telemed|pharma|therapy|hipaa", re.I
 )
 
 STAFFING_HINT = re.compile(
@@ -185,12 +185,48 @@ INFRA_PRODUCT = re.compile(
     re.I,
 )
 PUBLIC_NAME = re.compile(r"\bplc\b", re.I)
+NON_TARGET_NAME = re.compile(r"universit|college|school|foundation|government|county|city of|ministry|hospital|\bbank\b", re.I)
+AGENCY_ABOUT = re.compile(
+    r"\b(agency|consultancy|consulting (firm|company)|transformation firm|dev(elopment)? shop|software house|"
+    r"for our clients|our clients'|on-demand teams|staff augmentation|nearshore|outsourc)",
+    re.I,
+)
+GOV_ABOUT = re.compile(
+    r"national security|\bdefen[cs]e\b|government agencies|federal (agencies|government)|public sector|\bdod\b|"
+    r"health plans|payers|medicare advantage|insurers",
+    re.I,
+)
+HEADCOUNT = re.compile(r"(\d[\d,.]*)\s*(k)?\+?\s*(employees|people|staff|team members|engineers)\b", re.I)
+# One-line descriptions that mean dev tooling / infrastructure / security on their own.
+INFRA_ABOUT = re.compile(
+    r"open.source [\w-]+ (framework|sdk|library|runtime)|framework for building|\bsdk\b|\bruntime\b|"
+    r"\bbpf\b|linux (kernel|internals)|(give|help|for) developers|security teams|attack surface|"
+    r"infrastructure for|(uptime|application|infrastructure|synthetic|api) monitoring|observability|\bdevops\b",
+    re.I,
+)
+
+
+def headcount(text: str) -> int:
+    """Largest 'N employees/people' figure a company states about itself, 0 if none."""
+    best = 0
+    for num, k, _ in HEADCOUNT.findall(text or ""):
+        try:
+            n = float(num.replace(",", ""))
+        except ValueError:
+            continue
+        best = max(best, int(n * 1000 if k else n))
+    return best
 
 # Contact details in a company's own HN post.
 EMAIL = re.compile(
-    r"([a-z0-9._%+-]+)\s*(?:@|\[at\]|\(at\)|\{at\}|\s+at\s+)\s*"
-    r"([a-z0-9-]+(?:\s*(?:\.|\[dot\]|\(dot\)|\s+dot\s+)\s*[a-z0-9-]+)+)",
+    r"([a-z0-9._%+-]+)\s*(?:@|\[at\]|\(at\)|\{at\}|\s\[\s?at\s?\]\s)\s*"
+    r"([a-z0-9-]+(?:(?:\.|\s?\[dot\]\s?|\s?\(dot\)\s?)[a-z0-9-]+)+)",
     re.I,
+)
+EMAIL_TLDS = set(
+    "com io ai co org net dev app tech health cx xyz so sh gg me inc cloud systems services software studio "
+    "space team work jobs care bio energy finance money legal law build tools solutions digital agency "
+    "eu uk de fr nl be lu ch at dk se no fi is ee lv lt pl cz sk es pt it ie us ca au nz il sg in br mx".split()
 )
 GENERIC_MAILBOX = re.compile(r"^(jobs|careers|hiring|recruit\w*|talent|hr|hello|hi|info|team|apply|work|join\w*|people)$", re.I)
 TECH_TITLE = (r"CTO|CEO|(?:technical |tech )?co-?founder|founder|VP,? (?:of )?Engineering|Head of Engineering|"
@@ -202,10 +238,10 @@ CONTACT_INTRO = re.compile(
 )
 CONTACT_SIGNOFF = re.compile(r"([A-Z][a-z]+(?: [A-Z][a-z]+)?)\s*[,(–—-]\s*(" + TECH_TITLE + r")\b")
 CONTACT_REACH = re.compile(
-    r"(?:email|e-mail|reach out to|contact|message|write to|ping)\s+(?:me|our|the)?\s*"
-    r"(" + TECH_TITLE + r")?,?\s*([A-Z][a-z]+(?: [A-Z][a-z]+)?)?\s*(?:directly|at|on|via|:)",
-    re.I,
+    r"(?i:email|e-mail|reach out to|contact|message|write to|ping)\s+(?i:me|our|the)?\s*"
+    r"(" + TECH_TITLE + r")?,?\s*([A-Z][a-z]+(?: [A-Z][a-z]+)?)?\s*(?i:directly|at|on|via|:)",
 )
+NOT_A_NAME = re.compile(r"^(The|Our|We|Me|Us|Please|Directly|Apply|Email|Contact|Hiring|Remote|Team)\b")
 EUROPE_HINT = re.compile(
     r"europe|\bemea\b|\beu\b|\bcet\b|\buk\b|united kingdom|london|germany|berlin|munich|netherlands|"
     r"amsterdam|france|paris|spain|madrid|barcelona|portugal|lisbon|ireland|dublin|sweden|stockholm|"
@@ -562,7 +598,7 @@ def find_email(text: str, website: str = "") -> str:
     for user, domain in EMAIL.findall(text):
         domain = re.sub(r"\s*(?:\[dot\]|\(dot\)|\s+dot\s+)\s*", ".", domain, flags=re.I)
         domain = re.sub(r"\s+", "", domain).lower().strip(".")
-        if "." not in domain or domain.split(".")[-1] in ("png", "jpg", "gif") or len(user) > 40:
+        if "." not in domain or domain.split(".")[-1] not in EMAIL_TLDS or len(user) > 40:
             continue
         found.append(f"{user.lower()}@{domain}")
     if not found:
@@ -579,7 +615,7 @@ def find_contact(text: str) -> tuple[str, str]:
         if m:
             return m.group(1), m.group(2)
     m = CONTACT_REACH.search(text)
-    if m and m.group(2):
+    if m and m.group(2) and not NOT_A_NAME.match(m.group(2)):
         return m.group(2), m.group(1) or ""
     return "", ""
 
@@ -611,7 +647,7 @@ def collect_hn(pool: Pool) -> None:
         if not re.search(r"\bremote\b", plain, re.I):
             continue
         company, website, headline = hn_first_line(text)
-        if not company or len(company) > 40:
+        if not company or len(company) > 40 or is_eng(company) or company.lower().startswith(("remote", "http")):
             continue
         c = pool.add(company, "ANY", website)
         if not c:
@@ -815,14 +851,29 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     if PUBLIC_NAME.search(c.name):
         c.kill = "G2/G5: public company"
         return
+    if NON_TARGET_NAME.search(c.name):
+        c.kill = "not a product company (university/public body/bank)"
+        return
 
     about = product_sentences(c)
     if not c.about and about:
         c.about = about[0][:280]
+    own = " ".join(about[:3])  # the company's own words about itself
     infra = INFRA_PRODUCT.findall(" ".join(about[:15]))
-    if len(infra) >= 2:
+    if len(infra) >= 2 or INFRA_PRODUCT.search(c.about) or INFRA_ABOUT.search(c.about):
         c.kill = "product is infrastructure/devtools/security"
         return
+    if AGENCY_ABOUT.search(own):
+        c.kill = "G0: agency/consultancy (own description)"
+        return
+    if GOV_ABOUT.search(own):
+        c.kill = "revenue from government/insurers (own description)"
+        return
+    people = headcount(own)
+    if people > 250:
+        c.kill = f"G5: too big (says {people} people)"
+        return
+    f["people"] = people or ""
 
     bad, good = hits(STACK_BAD, blob), hits(STACK_GOOD, blob)
     f["stack_bad"], f["stack_good"] = bad, good
@@ -855,7 +906,7 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     f["integration"] = bool(INTEGRATION_HINT.search(blob))
     f["ai"] = bool(AI_HINT.search(blob))
     f["security"] = bool(SECURITY_HINT.search(blob))
-    f["health"] = bool(HEALTH_HINT.search(blob + " " + " ".join(s.text for s in c.signals)))
+    f["health"] = bool(HEALTH_HINT.search(own + " " + " ".join(s.text for s in c.signals if s.kind != "job")))
 
     kinds = {s.kind for s in c.signals}
     # Without a verifiable hiring page or a strong news trigger there is too little to go on.
