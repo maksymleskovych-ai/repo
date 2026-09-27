@@ -100,6 +100,42 @@ class GateTest(unittest.TestCase):
         self.assertEqual(c.offer_hint(x), "план злиття")
 
 
+class ParserTest(unittest.TestCase):
+    def test_news_name_prefixes(self):
+        self.assertEqual(c.clean_news_name("Amsterdam-based Duqu"), "Duqu")
+        self.assertEqual(c.clean_news_name("Italy’s Clastix"), "Clastix")
+        self.assertEqual(c.clean_news_name("London traveltech Stasher"), "Stasher")
+        self.assertEqual(c.clean_news_name("Berlin-based mika"), "mika")
+        self.assertEqual(c.clean_news_name("Sticker Mule"), "Sticker Mule")
+        self.assertEqual(c.classify_headline("Paris-based Primo raises €4M seed")[:2], ("funding", "Primo"))
+
+    def test_cms_takes_only_offsite_links(self):
+        page = """<nav><a href="https://www.cms.gov/x">Overview</a></nav><main>
+        <h3>Patient Facing Apps</h3>
+        <a href="https://www.cms.gov/pledge">COMPANY PLEDGE</a>
+        <a href="https://acmehealth.com/"><img src="a.png" alt="Acme Health logo"></a>
+        <a href="https://www.vinyl.health">Vinyl Health</a>
+        <a href="https://www.youtube.com/watch">Pledge Demo Showcase</a></main>"""
+        self.assertEqual(c.cms_companies(page), {"Acme Health": "https://acmehealth.com",
+                                                 "Vinyl Health": "https://vinyl.health"})
+
+    def test_hn_first_line(self):
+        text = 'Acme (<a href="https://acme.io">https://acme.io</a>) | Senior Backend Engineer | REMOTE (EU) | Full-time<p>We build...'
+        self.assertEqual(c.hn_first_line(text), ("Acme", "https://acme.io", "Senior Backend Engineer | REMOTE (EU) | Full-time"))
+
+    def test_eng_titles(self):
+        for t in ("Senior Backend Engineer", "DevOps Engineer", "Member of Technical Staff", "Engineering Manager"):
+            self.assertTrue(c.is_eng(t), t)
+        for t in ("Engineer Estimator", "Architectural Designer", "Sales Engineer", "Sr Solutions Architect",
+                  "Senior Data Engineer & Consultant"):
+            self.assertFalse(c.is_eng(t), t)
+
+    def test_staffing_name(self):
+        x = cand(name="Infoplus Technologies Inc", job_texts=["Senior Backend Engineer\nNode"])
+        c.evaluate(x, set(), set())
+        self.assertTrue(x.kill.startswith("G0"))
+
+
 class RssTest(unittest.TestCase):
     def test_parse(self):
         xml = """<?xml version="1.0"?><rss><channel>

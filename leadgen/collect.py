@@ -69,10 +69,23 @@ CMS_PAGES = [
 # --------------------------------------------------------------------------
 
 ENG_TITLE = re.compile(
-    r"engineer|developer|devops|\bsre\b|platform|backend|back-end|frontend|front-end|"
-    r"full.?stack|architect|\bcto\b|tech(nical)? lead|machine learning|\bml\b|data engineer",
+    r"software|developer|devops|\bsre\b|platform engineer|backend|back-end|frontend|front-end|"
+    r"full.?stack|\bcto\b|tech(nical)? lead|machine learning|\bml\b|\bai engineer|data engineer|"
+    r"infrastructure engineer|cloud engineer|forward deployed|technical staff|engineering manager|"
+    r"head of engineering|vp,? engineering|(web|mobile|ios|android|integrations?|product) engineer",
     re.I,
 )
+# Engineering-sounding titles that are not product engineering.
+NON_ENG_TITLE = re.compile(
+    r"estimator|architectural|civil|mechanical|electrical|structural|hardware|sales engineer|"
+    r"solutions? (architect|engineer|consultant)|consultant|pre-?sales|support engineer|"
+    r"recruit|intern\b|designer|test (technician|operator)",
+    re.I,
+)
+
+
+def is_eng(title: str) -> bool:
+    return bool(ENG_TITLE.search(title or "")) and not NON_ENG_TITLE.search(title or "")
 
 STACK_BAD = {
     "Java": r"\bjava\b(?!script)|spring boot|\bspring\b",
@@ -112,6 +125,11 @@ STAFFING_HINT = re.compile(
     r"software house|dev(elopment)? agency|it services|consultancy|"
     r"we (are|build) (a )?software (development )?(company|agency)|for our clients?\b|"
     r"on behalf of (our|a) client",
+    re.I,
+)
+STAFFING_NAME = re.compile(
+    r"consult|staffing|recruit|talent|outsourc|nearshore|offshore|infotech|infosys|"
+    r"it solutions|software solutions|technologies (inc|llc|pvt)|\bpvt\b|services (inc|llc|ltd)",
     re.I,
 )
 LANGUAGE_HINT = re.compile(
@@ -239,6 +257,7 @@ class Signal:
 class Candidate:
     name: str
     region: str = "ANY"
+    website: str = ""
     signals: list[Signal] = field(default_factory=list)
     job_texts: list[str] = field(default_factory=list)  # from job-board APIs
     job_locations: list[str] = field(default_factory=list)
@@ -259,7 +278,7 @@ class Pool:
         self.by_key: dict[str, Candidate] = {}
         self.acquired: set[str] = set()
 
-    def add(self, name: str, region: str = "ANY") -> Candidate | None:
+    def add(self, name: str, region: str = "ANY", website: str = "") -> Candidate | None:
         name = re.sub(r"\s+", " ", html.unescape(name or "")).strip(" -–—:,.")
         k = norm(name)
         if len(k) < 2 or len(name) > 60:
@@ -269,6 +288,8 @@ class Pool:
             c = self.by_key[k] = Candidate(name=name, region=region)
         elif c.region == "ANY":
             c.region = region
+        if website and not c.website:
+            c.website = website
         return c
 
 
@@ -284,20 +305,31 @@ def rss_items(xml_text: str):
             strip_html(item.findtext("title") or ""),
             (item.findtext("link") or "").strip(),
             parse_date(item.findtext("pubDate")),
+            item.findtext("description") or "",
         )
+
+
+def clean_news_name(name: str) -> str:
+    """'Amsterdam-based Duqu' -> 'Duqu', 'London traveltech Stasher' -> 'Stasher'."""
+    toks = name.split()
+    cut = -1
+    for i, t in enumerate(toks[:-1]):
+        if t.endswith("-based") or t.endswith("’s") or t.endswith("'s") or t.islower():
+            cut = i
+    return " ".join(toks[cut + 1:])
 
 
 def classify_headline(title: str):
     """Return (kind, company, extra) for a news headline, or None."""
     m = ACQUIRED_TITLE.match(title)
     if m:
-        return ("acquired", m.group("co"), "")
+        return ("acquired", clean_news_name(m.group("co")), "")
     m = ACQ_TITLE.match(title)
     if m:
-        return ("acquirer", m.group("buyer"), m.group("target"))
+        return ("acquirer", clean_news_name(m.group("buyer")), clean_news_name(m.group("target")))
     m = FUNDING_TITLE.match(title)
     if m:
-        return ("funding", m.group("co"), "")
+        return ("funding", clean_news_name(m.group("co")), "")
     return None
 
 
@@ -313,7 +345,7 @@ def collect_news(pool: Pool) -> None:
         except ET.ParseError:
             log(f"  news: {label}: not RSS")
             continue
-        for title, link, date in items:
+        for title, link, date, _ in items:
             if date and (TODAY - date).days > NEWS_MAX_AGE_DAYS:
                 continue
             hit = classify_headline(title)
@@ -332,31 +364,52 @@ def collect_news(pool: Pool) -> None:
         log(f"  news: {label}: {len(items)} items, {n} signals")
 
 
+NON_COMPANY_HOSTS = re.compile(
+    r"(^|\.)(cms|hhs|medicare|medicaid|healthit|usa|whitehouse|youtube|twitter|x|linkedin|facebook|"
+    r"instagram|github|google|apple|microsoft)\.(gov|com)$|\.gov$",
+    re.I,
+)
+
+
+def cms_companies(page: str) -> dict[str, str]:
+    """Company name -> website, from the pledge links that point off cms.gov."""
+    main = re.search(r"<main.*?</main>", page, re.S | re.I)
+    body = main.group(0) if main else page
+    out = {}
+    for href, inner in re.findall(r'<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>', body, re.S | re.I):
+        host = urllib.parse.urlparse(href).netloc.lower().removeprefix("www.")
+        if not host or NON_COMPANY_HOSTS.search(host):
+            continue
+        name = strip_html(inner)
+        if not name:
+            alt = re.search(r'alt="([^"]+)"', inner)
+            name = html.unescape(alt.group(1)).strip() if alt else ""
+        name = re.sub(r"\s+logo$", "", name, flags=re.I)
+        if 2 <= len(name) <= 50 and not re.search(r"learn more|click|read|here|download|\bpdf\b", name, re.I):
+            out.setdefault(name, f"https://{host}")
+    return out
+
+
 def collect_cms(pool: Pool) -> None:
     for url in CMS_PAGES:
+        label = url.rsplit("/", 1)[-1]
         page = try_fetch(url)
         if not page:
-            log(f"  cms: {url.rsplit('/', 1)[-1]}: unreachable")
+            log(f"  cms: {label}: unreachable")
             continue
-        main = re.search(r"<main.*?</main>", page, re.S | re.I)
-        body = main.group(0) if main else page
-        names = set()
-        for cell in re.findall(r"<(?:li|td|h3|h4|strong)[^>]*>(.*?)</(?:li|td|h3|h4|strong)>", body, re.S | re.I):
-            t = strip_html(cell)
-            # company names are short and mostly capitalised; skip prose
-            if 2 <= len(t) <= 45 and t[0].isupper() and len(t.split()) <= 5 and not t.endswith("."):
-                names.add(t)
-        for t in names:
-            c = pool.add(t, "US")
+        names = cms_companies(page)
+        for name, site in names.items():
+            c = pool.add(name, "US", site)
             if c:
-                c.signals.append(Signal("cms", None, f"CMS pledge: {url.rsplit('/', 1)[-1]}", url))
-        log(f"  cms: {url.rsplit('/', 1)[-1]}: {len(names)} names")
+                c.signals.append(Signal("cms", None, f"CMS pledge: {label}", url))
+        log(f"  cms: {label}: {len(names)} companies")
 
 
-def _add_job(pool: Pool, company: str, title: str, desc: str, location: str, date, url: str, region="ANY"):
-    if not company or not ENG_TITLE.search(title or ""):
+def _add_job(pool: Pool, company: str, title: str, desc: str, location: str, date, url: str,
+             region="ANY", website=""):
+    if not company or not is_eng(title):
         return
-    c = pool.add(company, region)
+    c = pool.add(company, region, website)
     if not c:
         return
     c.job_texts.append(f"{title}\n{strip_html(desc)[:6000]}")
@@ -367,11 +420,14 @@ def _add_job(pool: Pool, company: str, title: str, desc: str, location: str, dat
 def collect_jobs(pool: Pool) -> None:
     before = len(pool.by_key)
 
-    data = try_fetch("https://remotive.com/api/remote-jobs?category=software-dev", as_json=True)
-    for j in (data or {}).get("jobs", []):
-        _add_job(pool, j.get("company_name"), j.get("title"), j.get("description"),
-                 j.get("candidate_required_location"), j.get("publication_date"), j.get("url"))
-    log(f"  jobs: remotive: {len((data or {}).get('jobs', []))}")
+    n = 0
+    for cat in ("software-dev", "devops"):
+        data = try_fetch(f"https://remotive.com/api/remote-jobs?category={cat}", as_json=True)
+        for j in (data or {}).get("jobs", []):
+            _add_job(pool, j.get("company_name"), j.get("title"), j.get("description"),
+                     j.get("candidate_required_location"), j.get("publication_date"), j.get("url"))
+            n += 1
+    log(f"  jobs: remotive: {n}")
 
     data = try_fetch("https://remoteok.com/api", as_json=True)
     rows = [j for j in (data or []) if isinstance(j, dict) and j.get("company")]
@@ -389,7 +445,7 @@ def collect_jobs(pool: Pool) -> None:
                      loc, j.get("pubDate"), j.get("applicationLink") or j.get("guid"))
         if not jobs:
             break
-    log("  jobs: himalayas: done")
+    log(f"  jobs: himalayas: {offset + len(jobs)}")
 
     url = "https://www.arbeitnow.com/api/job-board-api"
     for _ in range(3):
@@ -405,7 +461,80 @@ def collect_jobs(pool: Pool) -> None:
         if not url:
             break
     log("  jobs: arbeitnow: done")
+    n = 0
+    for cat in ("remote-back-end-programming-jobs", "remote-full-stack-programming-jobs", "remote-devops-sysadmin-jobs"):
+        text = try_fetch(f"https://weworkremotely.com/categories/{cat}.rss")
+        try:
+            items = list(rss_items(text)) if text else []
+        except ET.ParseError:
+            items = []
+        for title, link, date, desc in items:
+            company, _, role = title.partition(":")
+            if role:
+                _add_job(pool, company, role.strip(), desc, "", date, link)
+                n += 1
+    log(f"  jobs: weworkremotely: {n}")
+
+    data = try_fetch("https://jobicy.com/api/v2/remote-jobs?count=100", as_json=True)
+    rows = (data or {}).get("jobs", [])
+    for j in rows:
+        _add_job(pool, j.get("companyName"), j.get("jobTitle"), j.get("jobDescription") or j.get("jobExcerpt"),
+                 j.get("jobGeo"), j.get("pubDate"), j.get("url"))
+    log(f"  jobs: jobicy: {len(rows)}")
+
+    data = try_fetch("https://www.workingnomads.com/api/exposed_jobs/", as_json=True)
+    rows = [j for j in (data or []) if isinstance(j, dict) and j.get("category_name") in ("Development", "System Administration")]
+    for j in rows:
+        _add_job(pool, j.get("company_name"), j.get("title"), j.get("description"),
+                 j.get("location"), j.get("pub_date"), j.get("url"))
+    log(f"  jobs: workingnomads: {len(rows)}")
+
+    collect_hn(pool)
     log(f"  jobs: {len(pool.by_key) - before} new companies")
+
+
+HN_URL = re.compile(r"https?://(?:www\.)?([a-z0-9.-]+\.[a-z]{2,})", re.I)
+
+
+def hn_first_line(text: str) -> tuple[str, str, str]:
+    """(company, website, headline) from a 'Who is hiring' comment."""
+    first = re.split(r"<p>|\n", html.unescape(text or ""), maxsplit=1)[0]
+    site = HN_URL.search(first)
+    parts = [p.strip() for p in strip_html(first).split("|")]
+    company = re.sub(r"\(.*?\)|https?://\S+", "", parts[0]).strip(" -–—:")
+    website = f"https://{site.group(1).lower()}" if site and "ycombinator" not in site.group(1) else ""
+    return company, website, " | ".join(parts[1:4])
+
+
+def collect_hn(pool: Pool) -> None:
+    """Latest HN 'Ask HN: Who is hiring?' thread: small companies, often posted by founders."""
+    data = try_fetch("https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10", as_json=True)
+    story = next((h for h in (data or {}).get("hits", []) if "who is hiring" in (h.get("title") or "").lower()), None)
+    if not story:
+        log("  jobs: hn: thread not found")
+        return
+    sid = story["objectID"]
+    data = try_fetch(f"https://hn.algolia.com/api/v1/search?tags=comment,story_{sid}&hitsPerPage=1000", as_json=True)
+    n = 0
+    for h in (data or {}).get("hits", []):
+        if str(h.get("parent_id")) != str(sid):
+            continue  # replies, not job posts
+        text = h.get("comment_text") or ""
+        plain = strip_html(text)
+        if not re.search(r"\bremote\b", plain, re.I):
+            continue
+        company, website, headline = hn_first_line(text)
+        if not company or len(company) > 40:
+            continue
+        c = pool.add(company, "ANY", website)
+        if not c:
+            continue
+        c.job_texts.append(plain[:6000])
+        c.job_locations.append(headline)
+        c.signals.append(Signal("job", parse_date(h.get("created_at")), f"HN Who is hiring: {headline[:80]}",
+                                f"https://news.ycombinator.com/item?id={h['objectID']}"))
+        n += 1
+    log(f"  jobs: hn who is hiring: {n}")
 
 
 # --------------------------------------------------------------------------
@@ -466,9 +595,89 @@ def ats_lever(slug: str):
     return f"https://jobs.lever.co/{slug}", jobs
 
 
+def ats_recruitee(slug: str):
+    data = try_fetch(f"https://{slug}.recruitee.com/api/offers/", as_json=True)
+    if not data or "offers" not in data:
+        return None
+    jobs = []
+    for j in data["offers"]:
+        loc = j.get("location", "") or ""
+        jobs.append({
+            "title": j.get("title", ""),
+            "location": loc,
+            "remote": bool(j.get("remote")) or "remote" in loc.lower(),
+            "opened": parse_date(j.get("created_at") or j.get("published_at")),
+            "text": strip_html((j.get("description") or "") + " " + (j.get("requirements") or ""))[:6000],
+        })
+    return f"https://{slug}.recruitee.com", jobs
+
+
+def ats_personio(slug: str):
+    text = try_fetch(f"https://{slug}.jobs.personio.de/xml")
+    if not text or "<position" not in text:
+        return None
+    try:
+        root = ET.fromstring(text.encode("utf-8"))
+    except ET.ParseError:
+        return None
+    jobs = []
+    for pos in root.iter("position"):
+        loc = pos.findtext("office") or ""
+        desc = " ".join(v.text or "" for v in pos.iter("value"))
+        jobs.append({
+            "title": pos.findtext("name") or "",
+            "location": loc,
+            "remote": "remote" in (loc + " " + (pos.findtext("schedule") or "")).lower(),
+            "opened": parse_date(pos.findtext("createdAt")),
+            "text": strip_html(desc)[:6000],
+        })
+    return f"https://{slug}.jobs.personio.de", jobs
+
+
+def ats_workable(slug: str):
+    data = try_fetch(f"https://apply.workable.com/api/v1/widget/accounts/{slug}", as_json=True)
+    if not data or "jobs" not in data:
+        return None
+    jobs = []
+    for j in data["jobs"]:
+        loc = ", ".join(x for x in (j.get("city"), j.get("country")) if x)
+        jobs.append({
+            "title": j.get("title", ""),
+            "location": loc,
+            "remote": bool(j.get("telecommuting")),
+            "opened": parse_date(j.get("created_at") or j.get("published_on")),
+            "text": "",
+        })
+    return f"https://apply.workable.com/{slug}", jobs
+
+
+def ats_smartrecruiters(slug: str):
+    data = try_fetch(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", as_json=True)
+    if not data or not data.get("content"):
+        return None
+    jobs = []
+    for j in data["content"]:
+        loc = j.get("location") or {}
+        jobs.append({
+            "title": j.get("name", ""),
+            "location": ", ".join(x for x in (loc.get("city"), loc.get("country")) if x),
+            "remote": bool(loc.get("remote")),
+            "opened": parse_date(j.get("releasedDate")),
+            "text": "",
+        })
+    return f"https://jobs.smartrecruiters.com/{slug}", jobs
+
+
+ATS_PROBES = (ats_ashby, ats_greenhouse, ats_lever, ats_recruitee, ats_personio, ats_workable, ats_smartrecruiters)
+
+
 def enrich(c: Candidate) -> Candidate:
-    for slug in slugs(c.name):
-        for probe in (ats_ashby, ats_greenhouse, ats_lever):
+    names = slugs(c.name)
+    if c.website:
+        host = urllib.parse.urlparse(c.website).netloc.removeprefix("www.")
+        names += [s for s in slugs(host.split(".")[0]) if s not in names]
+    for slug in names:
+        for probe in ATS_PROBES:
             res = probe(slug)
             if res and res[1]:
                 c.ats_url, c.ats_jobs = res
@@ -499,12 +708,12 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
         c.kill = "G2: acquired (news)"
         return
 
-    eng_jobs = [j for j in c.ats_jobs if ENG_TITLE.search(j["title"])]
+    eng_jobs = [j for j in c.ats_jobs if is_eng(j["title"])]
     texts = [f"{j['title']}\n{j['text']}" for j in eng_jobs] + c.job_texts
     blob = "\n".join(texts)
     locations = [j["location"] for j in eng_jobs] + c.job_locations
 
-    if STAFFING_HINT.search(c.name) or len(STAFFING_HINT.findall(blob)) >= 2:
+    if STAFFING_NAME.search(c.name) or STAFFING_HINT.search(c.name) or len(STAFFING_HINT.findall(blob)) >= 2:
         c.kill = "G0: staffing/outsourcing wording"
         return
 
@@ -553,6 +762,7 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     score += 1 if "funding" in kinds else 0
     score += 3 if isinstance(f["oldest_days"], int) and f["oldest_days"] > 60 else 0
     score += 2 if c.ats_url else 0
+    score += 1 if c.website else 0
     score += 1 if 1 <= f["eng_open"] <= 10 else 0
     score += 2 if f["integration"] else 0
     score += 1 if f["ai"] else 0
@@ -617,7 +827,7 @@ def save_seen(rows: list[dict]) -> None:
 OUT_FIELDS = [
     "rank", "collected_on", "company", "score", "icp_hint", "offer_hint", "trigger_date", "trigger",
     "trigger_url", "other_signals", "ats_url", "eng_roles_open", "oldest_eng_role_days", "remote",
-    "stack_seen", "stack_red_flags", "eng_locations", "integration_wording", "to_verify",
+    "stack_seen", "stack_red_flags", "eng_locations", "integration_wording", "to_verify", "website",
 ]
 
 
@@ -644,7 +854,9 @@ def row_for(rank: int, c: Candidate) -> dict:
         "stack_red_flags": ", ".join(sorted(f.get("stack_bad", {}))),
         "eng_locations": "; ".join(f.get("locations", [])),
         "integration_wording": "yes" if f.get("integration") else "no",
-        "to_verify": "website, size, ownership (G2), who pays (G0b), named tech contact (G6)",
+        "to_verify": ("" if c.website else "website, ") + "size, ownership (G2), who pays (G0b), named tech contact (G6)"
+                     + ("" if c.ats_url else ", hiring page (no ATS found)"),
+        "website": c.website,
     }
 
 
