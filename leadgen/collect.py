@@ -69,7 +69,7 @@ CMS_PAGES = [
 # --------------------------------------------------------------------------
 
 ENG_TITLE = re.compile(
-    r"software|developer|devops|\bsre\b|platform engineer|backend|back-end|frontend|front-end|"
+    r"software|\bswe\b|developer|devops|\bsre\b|platform engineer|backend|back-end|frontend|front-end|"
     r"full.?stack|\bcto\b|tech(nical)? lead|machine learning|\bml\b|\bai engineer|data engineer|"
     r"infrastructure engineer|cloud engineer|forward deployed|technical staff|engineering manager|"
     r"head of engineering|vp,? engineering|(web|mobile|ios|android|integrations?|product) engineer",
@@ -989,6 +989,21 @@ def load_kill_keys() -> set[str]:
     return {norm(l) for l in path.read_text().splitlines() if l.strip() and not l.startswith("#")}
 
 
+def load_registry() -> set[str]:
+    """Companies the routine already judged (data/registry.csv); skipped until skip_until, or forever if empty."""
+    path = DATA / "registry.csv"
+    if not path.exists():
+        return set()
+    skip = set()
+    for r in csv.DictReader(path.open(encoding="utf-8")):
+        if not r.get("company") or r["company"].startswith("#"):
+            continue
+        until = parse_date(r.get("skip_until"))
+        if until is None or until > TODAY:
+            skip.add(norm(r["company"]))
+    return skip
+
+
 def load_seen() -> tuple[list[dict], set[str]]:
     path = DATA / "seen.csv"
     rows = list(csv.DictReader(path.open())) if path.exists() else []
@@ -1065,6 +1080,7 @@ def main() -> int:
 
     kill_keys = load_kill_keys()
     seen_rows, skip = load_seen()
+    skip |= load_registry()
 
     pool = Pool()
     log("Collecting…")

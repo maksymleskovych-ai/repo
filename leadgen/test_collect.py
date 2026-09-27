@@ -213,6 +213,7 @@ class LiveDataRegressionTest(unittest.TestCase):
 
     def test_job_title_is_not_a_company(self):
         self.assertTrue(c.is_eng("Senior Python Backend Engineer"))
+        self.assertTrue(c.is_eng("Lead SWE"))
 
     def test_devtools_from_one_line(self):
         for name, about in [
@@ -272,6 +273,16 @@ class LiveDataRegressionTest(unittest.TestCase):
 
     def test_instructor_is_not_engineering(self):
         self.assertFalse(c.is_eng("Instructor, AI/Machine Learning (Part time)"))
+
+
+class RegistryTest(unittest.TestCase):
+    def test_registry_skips(self):
+        keys = c.load_registry()
+        self.assertIn(c.norm("Kombo"), keys)           # qualified: never again
+        self.assertIn(c.norm("Storyblok"), keys)       # killed, never
+        self.assertIn(c.norm("Peec AI"), keys)         # killed +6 months, still inside the window
+        self.assertIn(c.norm("HelmGuard"), keys)       # re-qualified in section 8
+        self.assertNotIn(c.norm("Some New Co"), keys)
 
 
 class RssTest(unittest.TestCase):
