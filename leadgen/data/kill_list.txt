@@ -168,3 +168,43 @@ Capgemini
 Deloitte
 Tata Consultancy Services
 HCLTech
+# Big, public or infrastructure companies seen on job boards (added 2026-09-27)
+JFrog
+Fastly
+CircleCI
+Supabase
+Mattermost
+Mural
+Phantom
+Future PLC
+Dropbox
+DoiT International
+Mirantis
+ExtraHop
+AlphaSense
+Delinea
+Genpact
+Bitso
+GitLab
+Datadog
+Cloudflare
+Elastic
+MongoDB
+HashiCorp
+Grafana Labs
+Vercel
+Netlify
+Twilio
+Stripe
+Shopify
+Automattic
+Zapier
+Canva
+Atlassian
+Coder
+Railway
+vCluster Labs
+Harmonic
+Fortinet
+CrowdStrike
+Okta

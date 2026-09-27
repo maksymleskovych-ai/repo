@@ -147,6 +147,49 @@ class ParserTest(unittest.TestCase):
         self.assertTrue(x.kill.startswith("G0"))
 
 
+class StageOneTest(unittest.TestCase):
+    def test_infra_product_killed(self):
+        x = cand(name="Railway", jobs=[job(text="Railway is an infrastructure platform for developers. "
+                                           "We are building the deployment platform for the next decade.")])
+        c.evaluate(x, set(), set())
+        self.assertEqual(x.kill, "product is infrastructure/devtools/security")
+
+    def test_saas_using_postgres_not_killed(self):
+        x = cand(name="Acme", jobs=[job(text="Acme is a B2B invoicing platform for wholesalers. "
+                                        "Our platform runs on Postgres, Node.js and AWS with many integrations.")])
+        c.evaluate(x, set(), set())
+        self.assertEqual(x.kill, "")
+        self.assertTrue(x.about.startswith("Acme is a B2B invoicing platform"))
+
+    def test_public_company(self):
+        x = cand(name="Future PLC", jobs=[job()])
+        c.evaluate(x, set(), set())
+        self.assertTrue(x.kill.startswith("G2/G5"))
+
+    def test_email_deobfuscation_and_preference(self):
+        t = "Apply at jobs@acme.io or email me directly: jane [at] acme [dot] io"
+        self.assertEqual(c.find_email(t, "https://acme.io"), "jane@acme.io")
+        self.assertEqual(c.find_email("send CV to careers@acme.io", ""), "careers@acme.io")
+        self.assertEqual(c.find_email("no address here", ""), "")
+
+    def test_contact_patterns(self):
+        self.assertEqual(c.find_contact("Hi, I'm Jane Doe, the CTO. We are hiring."), ("Jane Doe", "CTO"))
+        self.assertEqual(c.find_contact("Questions? - Tom, co-founder"), ("Tom", "co-founder"))
+        self.assertEqual(c.find_contact("We are a small team building invoices."), ("", ""))
+
+    def test_hn_about(self):
+        text = "Acme | Backend | REMOTE (EU)<p>Acme automates order processing for 400 wholesalers across Europe.<p>Apply: jobs@acme.io"
+        self.assertEqual(c.hn_about(text), "Acme automates order processing for 400 wholesalers across Europe.")
+
+    def test_contact_in_output(self):
+        x = cand(jobs=[job()])
+        x.contact = {"name": "Jane", "title": "CTO", "email": "jane@acme.io", "source": "https://hn/1", "hn_user": "jdoe"}
+        c.evaluate(x, set(), set())
+        row = c.row_for(1, x)
+        self.assertEqual((row["contact_name"], row["contact_email"]), ("Jane", "jane@acme.io"))
+        self.assertNotIn("named tech contact", row["to_verify"])
+
+
 class RssTest(unittest.TestCase):
     def test_parse(self):
         xml = """<?xml version="1.0"?><rss><channel>

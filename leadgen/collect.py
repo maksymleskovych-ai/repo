@@ -165,6 +165,47 @@ ACQUIRED_TITLE = re.compile(
     r"^(?P<co>[A-Z0-9][\w.&'’\- ]{1,40}?)\s+(?:is |has been |gets )?acquired by\b", re.I
 )
 
+# Sentences that describe what the company itself does.
+ABOUT_SENTENCE = re.compile(
+    r"\b(we are|we're|we build|we make|we help|we provide|we offer|our (platform|product|mission|customers)|"
+    r"(is|are) (a|an|the) (leading |fast.growing |venture.backed |yc.backed )?[\w-]+( [\w-]+)?"
+    r" (platform|company|startup|tool|service|provider|solution|app|software))\b",
+    re.I,
+)
+# The product itself is infrastructure, dev tooling or security (routine rule: kill).
+INFRA_PRODUCT = re.compile(
+    r"developer (platform|tools?|experience platform)|dev ?tools|ci/cd (platform|tool)|continuous integration|"
+    r"observability (platform|company|tool)|monitoring platform|\bapm\b|data warehouse|vector (db|database)|"
+    r"database (company|platform|product)|(open.source|serverless|distributed|managed) (database|postgres)|"
+    r"cloud (infrastructure|platform|provider|hosting)|infrastructure (platform|company|software|provider)|"
+    r"(web|cloud|managed) hosting|\bcdn\b|edge (network|cloud|platform)|kubernetes (platform|management)|"
+    r"(security|cybersecurity|identity|endpoint|threat|vulnerability|devsecops) (platform|company|solution|detection|management)|"
+    r"cybersecurity|api gateway|serverless platform|backend.as.a.service|artifact (management|repository)|"
+    r"package (manager|registry)|feature flag|deployment platform|internal developer platform",
+    re.I,
+)
+PUBLIC_NAME = re.compile(r"\bplc\b", re.I)
+
+# Contact details in a company's own HN post.
+EMAIL = re.compile(
+    r"([a-z0-9._%+-]+)\s*(?:@|\[at\]|\(at\)|\{at\}|\s+at\s+)\s*"
+    r"([a-z0-9-]+(?:\s*(?:\.|\[dot\]|\(dot\)|\s+dot\s+)\s*[a-z0-9-]+)+)",
+    re.I,
+)
+GENERIC_MAILBOX = re.compile(r"^(jobs|careers|hiring|recruit\w*|talent|hr|hello|hi|info|team|apply|work|join\w*|people)$", re.I)
+TECH_TITLE = (r"CTO|CEO|(?:technical |tech )?co-?founder|founder|VP,? (?:of )?Engineering|Head of Engineering|"
+              r"Director of Engineering|Engineering Manager|Head of Platform|Head of AI|Chief Technology Officer|"
+              r"Staff Engineer|Principal Engineer|Tech Lead")
+CONTACT_INTRO = re.compile(
+    r"(?:I'm|I am|my name is|this is|hi,? I'm)\s+([A-Z][a-z]+(?: [A-Z][a-z]+)?),?\s+(?:the |a |one of the )?"
+    r"(" + TECH_TITLE + r")\b",
+)
+CONTACT_SIGNOFF = re.compile(r"([A-Z][a-z]+(?: [A-Z][a-z]+)?)\s*[,(–—-]\s*(" + TECH_TITLE + r")\b")
+CONTACT_REACH = re.compile(
+    r"(?:email|e-mail|reach out to|contact|message|write to|ping)\s+(?:me|our|the)?\s*"
+    r"(" + TECH_TITLE + r")?,?\s*([A-Z][a-z]+(?: [A-Z][a-z]+)?)?\s*(?:directly|at|on|via|:)",
+    re.I,
+)
 EUROPE_HINT = re.compile(
     r"europe|\bemea\b|\beu\b|\bcet\b|\buk\b|united kingdom|london|germany|berlin|munich|netherlands|"
     r"amsterdam|france|paris|spain|madrid|barcelona|portugal|lisbon|ireland|dublin|sweden|stockholm|"
@@ -268,6 +309,8 @@ class Candidate:
     signals: list[Signal] = field(default_factory=list)
     job_texts: list[str] = field(default_factory=list)  # from job-board APIs
     job_locations: list[str] = field(default_factory=list)
+    about: str = ""  # one line on what the company does
+    contact: dict = field(default_factory=dict)  # name, title, email, source
     # filled by enrichment
     ats_url: str = ""
     ats_jobs: list[dict] = field(default_factory=list)
@@ -513,6 +556,43 @@ def hn_first_line(text: str) -> tuple[str, str, str]:
     return company, website, " | ".join(parts[1:4])
 
 
+def find_email(text: str, website: str = "") -> str:
+    """One published address; a person's mailbox beats jobs@, the company's domain beats others."""
+    found = []
+    for user, domain in EMAIL.findall(text):
+        domain = re.sub(r"\s*(?:\[dot\]|\(dot\)|\s+dot\s+)\s*", ".", domain, flags=re.I)
+        domain = re.sub(r"\s+", "", domain).lower().strip(".")
+        if "." not in domain or domain.split(".")[-1] in ("png", "jpg", "gif") or len(user) > 40:
+            continue
+        found.append(f"{user.lower()}@{domain}")
+    if not found:
+        return ""
+    site = urllib.parse.urlparse(website).netloc.lower().removeprefix("www.") if website else ""
+    found.sort(key=lambda e: (bool(GENERIC_MAILBOX.match(e.split("@")[0])), bool(site) and not e.endswith(site)))
+    return found[0]
+
+
+def find_contact(text: str) -> tuple[str, str]:
+    """(name, title) of the person who posted, when they say who they are."""
+    for rx in (CONTACT_INTRO, CONTACT_SIGNOFF):
+        m = rx.search(text)
+        if m:
+            return m.group(1), m.group(2)
+    m = CONTACT_REACH.search(text)
+    if m and m.group(2):
+        return m.group(2), m.group(1) or ""
+    return "", ""
+
+
+def hn_about(text: str) -> str:
+    """The HN post's own description: the first paragraph after the header line."""
+    paras = [strip_html(p) for p in re.split(r"<p>", html.unescape(text or ""))[1:]]
+    for p in paras:
+        if len(p) > 40 and not p.lower().startswith(("apply", "email", "we're hiring", "we are hiring", "roles")):
+            return p[:280]
+    return ""
+
+
 def collect_hn(pool: Pool) -> None:
     """Latest HN 'Ask HN: Who is hiring?' thread: small companies, often posted by founders."""
     data = try_fetch("https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=10", as_json=True)
@@ -536,10 +616,17 @@ def collect_hn(pool: Pool) -> None:
         c = pool.add(company, "ANY", website)
         if not c:
             continue
+        post_url = f"https://news.ycombinator.com/item?id={h['objectID']}"
         c.job_texts.append(plain[:6000])
         c.job_locations.append(headline)
-        c.signals.append(Signal("job", parse_date(h.get("created_at")), f"HN Who is hiring: {headline[:80]}",
-                                f"https://news.ycombinator.com/item?id={h['objectID']}"))
+        c.signals.append(Signal("job", parse_date(h.get("created_at")), f"HN Who is hiring: {headline[:80]}", post_url))
+        c.about = c.about or hn_about(text)
+        if not c.contact:
+            name, title = find_contact(plain)
+            email = find_email(plain, c.website)
+            if name or email:
+                c.contact = {"name": name, "title": title, "email": email,
+                             "source": post_url, "hn_user": h.get("author", "")}
         n += 1
     log(f"  jobs: hn who is hiring: {n}")
 
@@ -725,6 +812,18 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
         c.kill = "G0: staffing/outsourcing wording"
         return
 
+    if PUBLIC_NAME.search(c.name):
+        c.kill = "G2/G5: public company"
+        return
+
+    about = product_sentences(c)
+    if not c.about and about:
+        c.about = about[0][:280]
+    infra = INFRA_PRODUCT.findall(" ".join(about[:15]))
+    if len(infra) >= 2:
+        c.kill = "product is infrastructure/devtools/security"
+        return
+
     bad, good = hits(STACK_BAD, blob), hits(STACK_GOOD, blob)
     f["stack_bad"], f["stack_good"] = bad, good
     if sum(bad.values()) >= 2 and sum(bad.values()) > sum(good.values()):
@@ -771,6 +870,7 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     score += 3 if isinstance(f["oldest_days"], int) and f["oldest_days"] > 60 else 0
     score += 2 if c.ats_url else 0
     score += 1 if c.website else 0
+    score += 2 if c.contact.get("name") else 1 if c.contact.get("email") else 0
     where = " ".join(f.get("locations", [])) + " " + " ".join(s.text for s in c.signals)
     score += 2 if c.region == "EU" or EUROPE_HINT.search(where) else 0
     score += 1 if 1 <= f["eng_open"] <= 10 else 0
@@ -780,6 +880,23 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     score += 1 if sum(good.values()) >= 2 else 0
     score += 1 if len(kinds - {"job"}) >= 1 and (c.ats_url or c.job_texts) else 0
     c.score = score
+
+
+def sentences(text: str) -> list[str]:
+    return [x.strip() for x in re.split(r"(?<=[.!?])\s+|\n+", text or "") if 25 <= len(x.strip()) <= 400]
+
+
+def product_sentences(c: Candidate) -> list[str]:
+    """Sentences that describe the company, from its posts and job ads."""
+    first = c.name.split()[0].lower()
+    out = [c.about] if c.about else []
+    for t in c.job_texts + [j["text"] for j in c.ats_jobs]:
+        for x in sentences(t):
+            if ABOUT_SENTENCE.search(x) or x.lower().startswith(first + " "):
+                out.append(x)
+        if len(out) >= 25:
+            break
+    return list(dict.fromkeys(out))
 
 
 def trigger_of(c: Candidate) -> Signal | None:
@@ -838,6 +955,7 @@ OUT_FIELDS = [
     "rank", "collected_on", "company", "score", "icp_hint", "offer_hint", "trigger_date", "trigger",
     "trigger_url", "other_signals", "ats_url", "eng_roles_open", "oldest_eng_role_days", "remote",
     "stack_seen", "stack_red_flags", "eng_locations", "integration_wording", "to_verify", "website",
+    "about", "contact_name", "contact_title", "contact_email", "contact_source",
 ]
 
 
@@ -864,9 +982,16 @@ def row_for(rank: int, c: Candidate) -> dict:
         "stack_red_flags": ", ".join(sorted(f.get("stack_bad", {}))),
         "eng_locations": "; ".join(f.get("locations", [])),
         "integration_wording": "yes" if f.get("integration") else "no",
-        "to_verify": ("" if c.website else "website, ") + "size, ownership (G2), who pays (G0b), named tech contact (G6)"
+        "to_verify": ("" if c.website else "website, ") + "size, ownership (G2), who pays (G0b)"
+                     + ("" if c.contact.get("name") else ", named tech contact (G6)")
                      + ("" if c.ats_url else ", hiring page (no ATS found)"),
         "website": c.website,
+        "about": c.about,
+        "contact_name": c.contact.get("name", ""),
+        "contact_title": c.contact.get("title", ""),
+        "contact_email": c.contact.get("email", ""),
+        "contact_source": (c.contact.get("source", "") + (f" (HN user {c.contact['hn_user']})" if c.contact.get("hn_user") else ""))
+                          if c.contact else "",
     }
 
 
