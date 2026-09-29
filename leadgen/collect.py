@@ -536,6 +536,7 @@ def yc_candidates(rows: list[dict], day: dt.date) -> list[dict]:
     keep.sort(key=lambda r: r.get("slug") or r.get("name") or "")
     if not keep:
         return []
+    log(f"  yc: {len(keep)} match the filters (full rotation every {-(-len(keep) // YC_PER_DAY)} days)")
     start = (day.toordinal() * YC_PER_DAY) % len(keep)
     return (keep[start:] + keep[:start])[:YC_PER_DAY]
 
