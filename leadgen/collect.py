@@ -185,7 +185,23 @@ INFRA_PRODUCT = re.compile(
     re.I,
 )
 PUBLIC_NAME = re.compile(r"\bplc\b", re.I)
-NON_TARGET_NAME = re.compile(r"universit|college|school|foundation|government|county|city of|ministry|hospital|\bbank\b", re.I)
+NON_TARGET_NAME = re.compile(
+    r"universit|college|school|foundation|government|county|city of|ministry|hospital|\bbank\b|"
+    r"institute|philanthrop|association|society|council|charity",
+    re.I,
+)
+# Not a company name at all: HN header fragments, places, placeholders.
+JUNK_NAME = re.compile(
+    r"(?i::|^(location|remote|hybrid|onsite|on-site|full.?time|part.?time|contract|hiring|we're|we are)\b|"
+    r"^(director|head|vp|vice president) of\b|^stealth\b|"
+    r"^(a |an |the )?(saas|stealth|ai|fintech|healthtech|b2b|seed.stage|early.stage)( \w+)? (startup|company)$)|"
+    r"^[A-Z][a-z]+, (?!Inc\b|LLC\b|Ltd\b|GmbH\b|Co\b)[A-Z][a-zA-Z]+( [A-Z][a-zA-Z]+)?$"
+)
+NONPROFIT_ABOUT = re.compile(
+    r"non-?profit|not-for-profit|501\(c\)|philanthrop|charit(y|able)|research institute|academic|"
+    r"open.source (project|community|initiative)|humanitarian|scholarly",
+    re.I,
+)
 AGENCY_ABOUT = re.compile(
     r"\b(agency|consultancy|consulting (firm|company)|transformation firm|dev(elopment)? shop|software house|"
     r"for our clients|our clients'|on-demand teams|staff augmentation|nearshore|outsourc|consultant network)",
@@ -347,6 +363,7 @@ class Candidate:
     job_texts: list[str] = field(default_factory=list)  # from job-board APIs
     job_locations: list[str] = field(default_factory=list)
     about: str = ""  # one line on what the company does
+    team_size: int = 0  # stated by a directory (YC), 0 if unknown
     contact: dict = field(default_factory=dict)  # name, title, email, source
     # filled by enrichment
     ats_url: str = ""
@@ -490,6 +507,60 @@ def collect_cms(pool: Pool) -> None:
             if c:
                 c.signals.append(Signal("cms", None, f"CMS pledge: {label}", url))
         log(f"  cms: {label}: {len(names)} companies")
+
+
+YC_URL = "https://yc-oss.github.io/api/companies/all.json"
+YC_SKIP_SUBINDUSTRY = re.compile(r"engineering, product and design|security|infrastructure|developer tools|devops", re.I)
+YC_INDUSTRY = re.compile(r"b2b|healthcare|fintech|industrials|real estate|education|government", re.I)
+YC_REGION = re.compile(r"europe|united kingdom|germany|france|netherlands|nordics|spain|united states|america|canada|remote", re.I)
+YC_PER_DAY = 80
+
+
+def yc_candidates(rows: list[dict], day: dt.date) -> list[dict]:
+    """Active, hiring, 8–200 people, B2B/health, US/Europe; a different daily slice of them."""
+    keep = []
+    for r in rows:
+        if not isinstance(r, dict) or r.get("status") != "Active" or not r.get("isHiring"):
+            continue
+        size = r.get("team_size") or 0
+        if not (8 <= size <= 200):
+            continue
+        industry = f"{r.get('industry', '')} {r.get('subindustry', '')}"
+        if not YC_INDUSTRY.search(industry) or YC_SKIP_SUBINDUSTRY.search(industry):
+            continue
+        regions = " ".join(r.get("regions") or []) + " " + (r.get("all_locations") or "")
+        if not YC_REGION.search(regions):
+            continue
+        keep.append(r)
+    # Rotate through the list: every day starts at a different offset, so each company comes up in turn.
+    keep.sort(key=lambda r: r.get("slug") or r.get("name") or "")
+    if not keep:
+        return []
+    start = (day.toordinal() * YC_PER_DAY) % len(keep)
+    return (keep[start:] + keep[:start])[:YC_PER_DAY]
+
+
+def collect_yc(pool: Pool) -> None:
+    rows = try_fetch(YC_URL, as_json=True)
+    if not isinstance(rows, list):
+        log("  yc: unreachable")
+        return
+    picked = yc_candidates(rows, TODAY)
+    for r in picked:
+        regions = " ".join(r.get("regions") or [])
+        region = "EU" if re.search(r"europe|united kingdom|germany|france|netherlands|nordics|spain", regions, re.I) else "US"
+        c = pool.add(r.get("name", ""), region, r.get("website") or "")
+        if not c:
+            continue
+        c.team_size = int(r.get("team_size") or 0)
+        desc = " ".join(x for x in (r.get("one_liner"), r.get("long_description")) if x)
+        c.about = c.about or strip_html(desc)[:280]
+        c.job_texts.append(strip_html(desc)[:3000])
+        c.job_locations.append(r.get("all_locations") or regions)
+        slug = r.get("slug") or ""
+        c.signals.append(Signal("yc", None, f"YC {r.get('batch', '')}: {c.team_size} people, hiring, {r.get('industry', '')}",
+                                f"https://www.ycombinator.com/companies/{slug}"))
+    log(f"  yc: {len(rows)} companies, {len(picked)} picked today")
 
 
 def _add_job(pool: Pool, company: str, title: str, desc: str, location: str, date, url: str,
@@ -856,6 +927,9 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     if PUBLIC_NAME.search(c.name):
         c.kill = "G2/G5: public company"
         return
+    if JUNK_NAME.search(c.name):
+        c.kill = "not a company name (parsing junk)"
+        return
     if NON_TARGET_NAME.search(c.name):
         c.kill = "not a product company (university/public body/bank)"
         return
@@ -871,12 +945,18 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
     if AGENCY_ABOUT.search(own):
         c.kill = "G0: agency/consultancy (own description)"
         return
+    if NONPROFIT_ABOUT.search(own):
+        c.kill = "non-profit/academic (own description)"
+        return
     if GOV_ABOUT.search(own):
         c.kill = "revenue from government/insurers (own description)"
         return
-    people = headcount(own)
+    people = headcount(own) or c.team_size
     if people > 250:
-        c.kill = f"G5: too big (says {people} people)"
+        c.kill = f"G5: too big ({people} people)"
+        return
+    if c.team_size and c.team_size < 8:
+        c.kill = f"G5: too small ({c.team_size} people)"
         return
     f["people"] = people or ""
 
@@ -915,13 +995,15 @@ def evaluate(c: Candidate, kill_keys: set[str], acquired: set[str]) -> None:
 
     kinds = {s.kind for s in c.signals}
     # Without a verifiable hiring page or a strong news trigger there is too little to go on.
-    if not c.ats_url and not c.job_texts and not ({"acquirer", "cms"} & kinds):
+    if not c.ats_url and not c.job_texts and not ({"acquirer", "cms", "yc"} & kinds):
         c.kill = "no ATS and weak signal"
         return
 
     score = 0
     score += 5 if "acquirer" in kinds else 0
     score += 3 if "cms" in kinds else 0
+    score += 2 if "yc" in kinds else 0  # size, website and hiring status come from a directory
+    score += 1 if 15 <= (people or 0) <= 120 else 0
     score += 1 if "funding" in kinds else 0
     score += 3 if isinstance(f["oldest_days"], int) and f["oldest_days"] > 60 else 0
     score += 2 if c.ats_url else 0
@@ -956,7 +1038,7 @@ def product_sentences(c: Candidate) -> list[str]:
 
 
 def trigger_of(c: Candidate) -> Signal | None:
-    rank = {"acquirer": 0, "cms": 1, "funding": 3, "job": 4}
+    rank = {"acquirer": 0, "cms": 1, "yc": 2, "funding": 3, "job": 4}
     sigs = sorted(c.signals, key=lambda s: (rank.get(s.kind, 9), -(s.date.toordinal() if s.date else 0)))
     return sigs[0] if sigs else None
 
@@ -995,12 +1077,13 @@ def load_registry() -> set[str]:
     if not path.exists():
         return set()
     skip = set()
-    for r in csv.DictReader(path.open(encoding="utf-8")):
-        if not r.get("company") or r["company"].startswith("#"):
-            continue
-        until = parse_date(r.get("skip_until"))
-        if until is None or until > TODAY:
-            skip.add(norm(r["company"]))
+    with path.open(encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            if not r.get("company") or r["company"].startswith("#"):
+                continue
+            until = parse_date(r.get("skip_until"))
+            if until is None or until > TODAY:
+                skip.add(norm(r["company"]))
     return skip
 
 
@@ -1086,13 +1169,14 @@ def main() -> int:
     log("Collecting…")
     collect_news(pool)
     collect_cms(pool)
+    collect_yc(pool)
     collect_jobs(pool)
 
     fresh = [c for c in pool.by_key.values() if c.key not in skip]
     log(f"{len(pool.by_key)} companies found, {len(fresh)} not seen before")
 
     # Strong news signals first, so the enrichment cap never drops them.
-    prio = {"acquirer": 0, "cms": 1, "funding": 2, "job": 3}
+    prio = {"acquirer": 0, "cms": 1, "yc": 2, "funding": 3, "job": 4}
     fresh.sort(key=lambda c: min((prio.get(s.kind, 9) for s in c.signals), default=9))
     fresh = fresh[: args.max_enrich]
 

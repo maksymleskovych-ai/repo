@@ -5,7 +5,7 @@ A daily script that does the cheap part of lead generation, so the Claude routin
 **Flow**
 
 1. **02:17 UTC**: GitHub Actions runs `leadgen/collect.py`:
-   - gathers companies from remote job boards (Remotive, RemoteOK, Himalayas, Arbeitnow, We Work Remotely, Jobicy, Working Nomads), the monthly HN "Who is hiring" thread, news RSS (EU-Startups, Tech.eu, Crunchbase News, Fierce Healthcare, MobiHealthNews) and the CMS pledge pages;
+   - gathers companies from remote job boards (Remotive, RemoteOK, Himalayas, Arbeitnow, We Work Remotely, Jobicy, Working Nomads), the monthly HN "Who is hiring" thread, the Y Combinator company directory (active, hiring, 8–200 people, B2B/health, US/Europe; 80 a day in rotation), news RSS (EU-Startups, Tech.eu, Crunchbase News, Fierce Healthcare, MobiHealthNews) and the CMS pledge pages;
    - drops anything in `leadgen/data/kill_list.txt` or already passed on (`leadgen/data/seen.csv`);
    - probes each company's own ATS (Ashby, Greenhouse, Lever, Recruitee, Personio, Workable, SmartRecruiters);
    - kills on the cheap gates: staffing wording, Java/.NET/Angular/PHP/Ruby stack, engineering roles in EE/India/Vietnam, local language required, too many open roles, on-site only;

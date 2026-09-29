@@ -218,3 +218,15 @@ Search Atlas
 ALBERT
 PostHog
 ManTech
+# Seen in routine verdicts 28-29.09
+Netflix
+Ambev
+hims & hers
+Softtek
+Sourcegraph
+OysterHR
+Oyster HR
+Virtasant
+NetDocuments
+AccuLynx
+WorkWave

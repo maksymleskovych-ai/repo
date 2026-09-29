@@ -285,6 +285,71 @@ class RegistryTest(unittest.TestCase):
         self.assertNotIn(c.norm("Some New Co"), keys)
 
 
+class MoreLeadsTest(unittest.TestCase):
+    """Misfits from the 28–29.09 verdicts, and the YC directory source."""
+
+    def test_junk_names(self):
+        for n in ("Location: London, UK", "Cologne, Germany", "SaaS Startup", "Director of Sales (Legal Ark AI)", "Stealth AI"):
+            self.assertTrue(c.JUNK_NAME.search(n), n)
+        for n in ("Acme, Inc", "Chief", "Lead Bank", "Cora AI", "Biobase", "VersaFeed.com", "Joi + Blokes"):
+            self.assertFalse(c.JUNK_NAME.search(n), n)
+
+    def test_nonprofit_and_institutes(self):
+        x = cand(name="Crossref", job_texts=["Senior Backend Engineer. Python."])
+        x.about = "Crossref is a not-for-profit membership organization for scholarly publishing."
+        c.evaluate(x, set(), set())
+        self.assertTrue(x.kill.startswith("non-profit"))
+        y = cand(name="Child Mind Institute", job_texts=["Software Engineer"])
+        c.evaluate(y, set(), set())
+        self.assertTrue(y.kill.startswith("not a product company"))
+
+    def yc_row(self, **kw):
+        r = {"name": "Acme", "slug": "acme", "website": "https://acme.io", "status": "Active", "isHiring": True,
+             "team_size": 30, "industry": "B2B", "subindustry": "B2B -> Operations", "regions": ["Europe"],
+             "all_locations": "Berlin, Germany", "batch": "W24", "one_liner": "Order automation for wholesalers",
+             "long_description": "Acme connects ERPs and webshops."}
+        r.update(kw)
+        return r
+
+    def test_yc_filter(self):
+        rows = [self.yc_row(),
+                self.yc_row(name="Big", slug="big", team_size=500),
+                self.yc_row(name="Tiny", slug="tiny", team_size=3),
+                self.yc_row(name="Dev", slug="dev", subindustry="B2B -> Engineering, Product and Design"),
+                self.yc_row(name="Sec", slug="sec", subindustry="B2B -> Security"),
+                self.yc_row(name="Gone", slug="gone", status="Acquired"),
+                self.yc_row(name="Quiet", slug="quiet", isHiring=False),
+                self.yc_row(name="Asia", slug="asia", regions=["South Asia"], all_locations="Bengaluru, India"),
+                self.yc_row(name="Consumer", slug="consumer", industry="Consumer", subindustry="Consumer -> Gaming")]
+        self.assertEqual([r["name"] for r in c.yc_candidates(rows, c.TODAY)], ["Acme"])
+
+    def test_yc_rotation_covers_everyone(self):
+        rows = [self.yc_row(name=f"Co{i}", slug=f"co{i:03d}") for i in range(200)]
+        seen = set()
+        for d in range(3):
+            seen |= {r["slug"] for r in c.yc_candidates(rows, c.TODAY + dt.timedelta(days=d))}
+        self.assertEqual(len(seen), 200)
+
+    def test_yc_candidate_passes_with_size(self):
+        pool = c.Pool()
+        orig = c.try_fetch
+        c.try_fetch = lambda url, as_json=False: [self.yc_row()]
+        try:
+            c.collect_yc(pool)
+        finally:
+            c.try_fetch = orig
+        x = pool.by_key["acme"]
+        c.evaluate(x, set(), set())
+        self.assertEqual(x.kill, "")
+        self.assertEqual((x.team_size, x.website, c.trigger_of(x).kind), (30, "https://acme.io", "yc"))
+
+    def test_yc_too_small(self):
+        x = cand(name="Tiny", signals=[c.Signal("yc", None, "YC", "u")])
+        x.team_size = 4
+        c.evaluate(x, set(), set())
+        self.assertTrue(x.kill.startswith("G5: too small"))
+
+
 class RssTest(unittest.TestCase):
     def test_parse(self):
         xml = """<?xml version="1.0"?><rss><channel>
